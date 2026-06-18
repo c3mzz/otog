@@ -11,6 +11,7 @@ import {
   problemRouter,
   submissionRouter,
   userRouter,
+  adminLogRouter,
 } from '@otog/contract'
 
 import { getAvatarUrl } from '../firebase/get-avatar-url'
@@ -64,6 +65,7 @@ export const problemQuery = initQueryClient(problemRouter, clientArgs)
 export const contestQuery = initQueryClient(contestRouter, clientArgs)
 export const submissionQuery = initQueryClient(submissionRouter, clientArgs)
 export const announcementQuery = initQueryClient(announcementRouter, clientArgs)
+export const adminLogQuery = initQueryClient(adminLogRouter, clientArgs)
 
 export const appKey = createQueryKey('app', appRouter)
 export const authKey = createQueryKey('auth', authRouter)
@@ -76,6 +78,7 @@ export const announcementKey = createQueryKey(
   'announcement',
   announcementRouter
 )
+export const adminLogKey = createQueryKey('adminLog', adminLogRouter)
 export const avatarKey = createQueryKeys('avatar', {
   getUrl: (params: { userId: number; size: 'default' | 'small' }) => ({
     queryKey: ['default', params],

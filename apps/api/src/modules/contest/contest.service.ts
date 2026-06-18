@@ -17,8 +17,8 @@ import { Contest, Prisma } from '@otog/database'
 export class ContestService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createContest: Prisma.ContestCreateInput) {
-    return this.prisma.contest.create({
+  async create(createContest: Prisma.ContestCreateInput, adminUserId?: number) {
+    const contest = await this.prisma.contest.create({
       data: {
         name: createContest.name,
         mode: createContest.mode,
@@ -28,6 +28,16 @@ export class ContestService {
         timeEnd: createContest.timeEnd,
       },
     })
+    if (adminUserId) {
+      await this.prisma.adminLog.create({
+        data: {
+          userId: adminUserId,
+          action: 'CREATE_CONTEST',
+          description: `Created contest: ${contest.name} (ID: ${contest.id})`,
+        },
+      })
+    }
+    return contest
   }
 
   listContest(args: ListPaginationQuerySchema) {
@@ -111,8 +121,8 @@ export class ContestService {
     if (!contestProblem) {
       return null
     }
-    return await this.prisma.problem.findUnique({
-      where: { id: problemId },
+    return await this.prisma.problem.findFirst({
+      where: { id: problemId, deletedAt: null },
     })
   }
 
@@ -488,26 +498,58 @@ export class ContestService {
 
   async updateContest(
     contestId: number,
-    contestData: Prisma.ContestUpdateInput
+    contestData: Prisma.ContestUpdateInput,
+    adminUserId?: number
   ) {
-    return this.prisma.contest.update({
+    const contest = await this.prisma.contest.update({
       where: { id: contestId },
       data: contestData,
     })
+    if (adminUserId) {
+      await this.prisma.adminLog.create({
+        data: {
+          userId: adminUserId,
+          action: 'UPDATE_CONTEST',
+          description: `Updated contest: ${contest.name} (ID: ${contest.id})`,
+        },
+      })
+    }
+    return contest
   }
 
   async patchContest(
     contestId: number,
-    contestData: Prisma.ContestUpdateInput
+    contestData: Prisma.ContestUpdateInput,
+    adminUserId?: number
   ) {
-    return this.prisma.contest.update({
+    const contest = await this.prisma.contest.update({
       where: { id: contestId },
       data: contestData,
     })
+    if (adminUserId) {
+      await this.prisma.adminLog.create({
+        data: {
+          userId: adminUserId,
+          action: 'UPDATE_CONTEST',
+          description: `Updated contest: ${contest.name} (ID: ${contest.id})`,
+        },
+      })
+    }
+    return contest
   }
 
-  async deleteContest(contestId: number) {
-    return this.prisma.contest.delete({ where: { id: contestId } })
+  async deleteContest(contestId: number, adminUserId?: number) {
+    const contest = await this.prisma.contest.delete({ where: { id: contestId } })
+    if (adminUserId) {
+      await this.prisma.adminLog.create({
+        data: {
+          userId: adminUserId,
+          action: 'DELETE_CONTEST',
+          description: `Deleted contest: ${contest.name} (ID: ${contest.id})`,
+        },
+      })
+    }
+    return contest
   }
 
   async getContestsForAdmin(

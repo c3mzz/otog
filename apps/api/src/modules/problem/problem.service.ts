@@ -39,6 +39,7 @@ export const WITHOUT_EXAMPLE = {
   recentShowTime: true,
   case: true,
   rating: true,
+  deletedAt: true,
 }
 
 @Injectable()
@@ -51,7 +52,7 @@ export class ProblemService {
     this.attachmentManager = new S3FileManager(environment.S3_BUCKET)
   }
 
-  async create(problemData: ProblemFormSchema, files: UploadedFilesObject) {
+  async create(problemData: ProblemFormSchema, files: UploadedFilesObject, adminUserId?: number) {
     try {
       const problem = await this.prisma.problem.create({
         data: {
@@ -81,6 +82,15 @@ export class ProblemService {
           this.fileManager
         )
       }
+      if (adminUserId) {
+        await this.prisma.adminLog.create({
+          data: {
+            userId: adminUserId,
+            action: 'ADD_PROBLEM',
+            description: `Added problem: ${problem.name} (ID: ${problem.id})`,
+          },
+        })
+      }
       return problem
     } catch (err) {
       console.log(err)
@@ -91,7 +101,8 @@ export class ProblemService {
   async replaceByProblemId(
     problemId: number,
     problemData: Prisma.ProblemUpdateInput,
-    files: UploadedFilesObject
+    files: UploadedFilesObject,
+    adminUserId?: number
   ) {
     try {
       const problem = await this.prisma.problem.update({
@@ -122,6 +133,15 @@ export class ProblemService {
           this.fileManager
         )
       }
+      if (adminUserId) {
+        await this.prisma.adminLog.create({
+          data: {
+            userId: adminUserId,
+            action: 'UPDATE_PROBLEM',
+            description: `Updated problem: ${problem.name} (ID: ${problem.id})`,
+          },
+        })
+      }
       return problem
     } catch (err) {
       console.error(err)
@@ -133,7 +153,7 @@ export class ProblemService {
     show?: boolean
     userId?: number
   }): Promise<Array<ProblemTableRowSchema>> {
-    const where = { show: args.show }
+    const where = { show: args.show, deletedAt: null }
     const [problems, problemsWithSubmissions] = await Promise.all([
       this.prisma.problem.findMany({
         where: where,
@@ -148,6 +168,7 @@ export class ProblemService {
           recentShowTime: true,
           case: true,
           rating: true,
+          deletedAt: true,
           submission: args.userId
             ? {
                 select: {
@@ -230,6 +251,7 @@ export class ProblemService {
       recentShowTime: problem.recentShowTime,
       case: problem.case,
       rating: problem.rating,
+      deletedAt: problem.deletedAt,
       latestSubmission: problem.submission?.[0] ?? null,
       passedCount: problemIdToPassedCount.get(problem.id) ?? 0,
       // samplePassedUsers: problemIdToSampleUsers.get(problem.id) ?? [],
@@ -237,14 +259,22 @@ export class ProblemService {
   }
 
   async findOneById(id: number) {
-    return this.prisma.problem.findUnique({
+    const problem = await this.prisma.problem.findUnique({
       where: { id },
       select: WITHOUT_EXAMPLE,
     })
+    if (!problem || problem.deletedAt) {
+      return null
+    }
+    return problem
   }
 
   async findOneByIdWithExamples(id: number) {
-    return this.prisma.problem.findUnique({ where: { id } })
+    const problem = await this.prisma.problem.findUnique({ where: { id } })
+    if (!problem || problem.deletedAt) {
+      return null
+    }
+    return problem
   }
 
   async getProblemDocStream(problemId: number) {
@@ -260,12 +290,22 @@ export class ProblemService {
     return docStream
   }
 
-  async changeProblemShowById(problemId: number, show: boolean) {
-    return this.prisma.problem.update({
+  async changeProblemShowById(problemId: number, show: boolean, adminUserId?: number) {
+    const problem = await this.prisma.problem.update({
       where: { id: problemId },
       data: { show, recentShowTime: new Date() },
       select: WITHOUT_EXAMPLE,
     })
+    if (adminUserId) {
+      await this.prisma.adminLog.create({
+        data: {
+          userId: adminUserId,
+          action: show ? 'SHOW_PROBLEM' : 'HIDE_PROBLEM',
+          description: `${show ? 'Shown' : 'Hidden'} problem: ${problem.name} (ID: ${problem.id})`,
+        },
+      })
+    }
+    return problem
   }
 
   async findPassedUser(args: {
@@ -306,16 +346,66 @@ export class ProblemService {
     )
   }
 
-  async delete(problemId: number) {
+  async delete(problemId: number, adminUserId?: number) {
     try {
-      const problem = await this.prisma.problem.delete({
+      const problem = await this.prisma.problem.update({
         where: { id: problemId },
+        data: { deletedAt: new Date() },
         select: WITHOUT_EXAMPLE,
       })
-      await removeProblemSource(`${problem.id}`, this.fileManager)
+      if (adminUserId) {
+        await this.prisma.adminLog.create({
+          data: {
+            userId: adminUserId,
+            action: 'DELETE_PROBLEM',
+            description: `Deleted problem: ${problem.name} (ID: ${problem.id})`,
+          },
+        })
+      }
       return problem
     } catch (e) {
       console.log(e)
+      throw new BadRequestException()
+    }
+  }
+
+  async restore(problemId: number, adminUserId: number) {
+    try {
+      const problem = await this.prisma.problem.findUnique({
+        where: { id: problemId },
+      })
+      if (!problem) {
+        throw new NotFoundException('Problem not found')
+      }
+      if (!problem.deletedAt) {
+        throw new BadRequestException('Problem is not deleted')
+      }
+
+      const thirtyDaysAgo = new Date()
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+      if (problem.deletedAt < thirtyDaysAgo) {
+        throw new BadRequestException('Problem was deleted more than 30 days ago')
+      }
+
+      const restoredProblem = await this.prisma.problem.update({
+        where: { id: problemId },
+        data: { deletedAt: null },
+        select: WITHOUT_EXAMPLE,
+      })
+
+      await this.prisma.adminLog.create({
+        data: {
+          userId: adminUserId,
+          action: 'RESTORE_PROBLEM',
+          description: `Restored problem: ${restoredProblem.name} (ID: ${restoredProblem.id})`,
+        },
+      })
+      return restoredProblem
+    } catch (e) {
+      console.error(e)
+      if (e instanceof NotFoundException || e instanceof BadRequestException) {
+        throw e
+      }
       throw new BadRequestException()
     }
   }
@@ -337,11 +427,11 @@ export class ProblemService {
     skip: number
     limit: number
     search?: string
+    deleted?: boolean
   }) {
-    return await this.prisma.problem.findMany({
-      take: args.limit,
-      skip: args.skip,
-      where: args.search
+    const where: Prisma.ProblemWhereInput = {
+      deletedAt: args.deleted ? { not: null } : null,
+      ...(args.search
         ? {
             OR: [
               searchId(args.search),
@@ -349,7 +439,12 @@ export class ProblemService {
               { sname: { contains: args.search, mode: 'insensitive' } },
             ],
           }
-        : undefined,
+        : {}),
+    }
+    return await this.prisma.problem.findMany({
+      take: args.limit,
+      skip: args.skip,
+      where,
       select: {
         id: true,
         name: true,
@@ -361,13 +456,15 @@ export class ProblemService {
         recentShowTime: true,
         score: true,
         attachmentMetadata: true,
+        deletedAt: true,
       },
       orderBy: { id: 'desc' },
     })
   }
-  async getProblemsCountForAdmin(args: { search?: string }) {
-    return await this.prisma.problem.count({
-      where: args.search
+  async getProblemsCountForAdmin(args: { search?: string; deleted?: boolean }) {
+    const where: Prisma.ProblemWhereInput = {
+      deletedAt: args.deleted ? { not: null } : null,
+      ...(args.search
         ? {
             OR: [
               searchId(args.search),
@@ -375,23 +472,27 @@ export class ProblemService {
               { sname: { contains: args.search, mode: 'insensitive' } },
             ],
           }
-        : undefined,
-    })
+        : {}),
+    }
+    return await this.prisma.problem.count({ where })
   }
 
   async searchProblem(args: { skip: number; limit: number; search?: string }) {
     return await this.prisma.problem.findMany({
       take: args.limit,
       skip: args.skip,
-      where: args.search
-        ? {
-            OR: [
-              searchId(args.search),
-              { name: { contains: args.search, mode: 'insensitive' } },
-              { sname: { contains: args.search, mode: 'insensitive' } },
-            ],
-          }
-        : undefined,
+      where: {
+        deletedAt: null,
+        ...(args.search
+          ? {
+              OR: [
+                searchId(args.search),
+                { name: { contains: args.search, mode: 'insensitive' } },
+                { sname: { contains: args.search, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
       select: {
         id: true,
         name: true,

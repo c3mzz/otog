@@ -145,14 +145,15 @@ export class ProblemController {
   //Admin route
   @TsRestHandler(c.toggleShowProblem)
   @Roles(Role.Admin)
-  toggleShowProblem() {
+  toggleShowProblem(@User() adminUser: UserDTO) {
     return tsRestHandler(
       c.toggleShowProblem,
       async ({ params: { problemId }, body: { show } }) => {
         const id = z.coerce.number().parse(problemId)
         const problem = await this.problemService.changeProblemShowById(
           id,
-          show
+          show,
+          adminUser.id
         )
         return { status: 200, body: problem }
       }
@@ -172,13 +173,20 @@ export class ProblemController {
       }
     )
   )
-  createProblem(@UploadedFiles() files: UploadedFilesObject) {
+  createProblem(
+    @UploadedFiles() files: UploadedFilesObject,
+    @User() adminUser: UserDTO
+  ) {
     return tsRestHandler(c.createProblem, async ({ body: bodyRaw }) => {
       const result = ProblemFormSchema.safeParse(bodyRaw)
       if (!result.success) {
         return { status: 400, body: { message: 'Bad Request' } }
       }
-      const problem = await this.problemService.create(result.data, files)
+      const problem = await this.problemService.create(
+        result.data,
+        files,
+        adminUser.id
+      )
       return { status: 201, body: problem }
     })
   }
@@ -196,7 +204,10 @@ export class ProblemController {
       }
     )
   )
-  updateProblem(@UploadedFiles() files: UploadedFilesObject) {
+  updateProblem(
+    @UploadedFiles() files: UploadedFilesObject,
+    @User() adminUser: UserDTO
+  ) {
     return tsRestHandler(
       c.updateProblem,
       async ({ body: bodyRaw, params: { problemId } }) => {
@@ -208,7 +219,8 @@ export class ProblemController {
         const problem = await this.problemService.replaceByProblemId(
           id,
           result.data,
-          files
+          files,
+          adminUser.id
         )
         return { status: 200, body: problem }
       }
@@ -217,10 +229,20 @@ export class ProblemController {
 
   @TsRestHandler(c.deleteProblem)
   @Roles(Role.Admin)
-  deleteProblem() {
+  deleteProblem(@User() user: UserDTO) {
     return tsRestHandler(c.deleteProblem, async ({ params: { problemId } }) => {
       const id = z.coerce.number().parse(problemId)
-      const problem = await this.problemService.delete(id)
+      const problem = await this.problemService.delete(id, user.id)
+      return { status: 200, body: problem }
+    })
+  }
+
+  @TsRestHandler(c.restoreProblem)
+  @Roles(Role.Admin)
+  restoreProblem(@User() user: UserDTO) {
+    return tsRestHandler(c.restoreProblem, async ({ params: { problemId } }) => {
+      const id = z.coerce.number().parse(problemId)
+      const problem = await this.problemService.restore(id, user.id)
       return { status: 200, body: problem }
     })
   }
@@ -246,7 +268,7 @@ export class ProblemController {
   getProblemsForAdmin(@User() user?: UserDTO) {
     return tsRestHandler(
       c.getProblemsForAdmin,
-      async ({ query: { skip = 0, limit = 10, search } }) => {
+      async ({ query: { skip = 0, limit = 10, search, deleted } }) => {
         if (user?.role !== Role.Admin) {
           return { status: 403, body: { message: 'Forbidden' } }
         }
@@ -255,8 +277,9 @@ export class ProblemController {
             limit,
             skip,
             search,
+            deleted,
           }),
-          this.problemService.getProblemsCountForAdmin({ search }),
+          this.problemService.getProblemsCountForAdmin({ search, deleted }),
         ])
         return { status: 200, body: { data: problems, total } }
       }

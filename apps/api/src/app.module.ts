@@ -10,6 +10,7 @@ import { ContestModule } from './modules/contest/contest.module'
 import { ProblemModule } from './modules/problem/problem.module'
 import { SubmissionModule } from './modules/submission/submission.module'
 import { UserModule } from './modules/user/user.module'
+import { AdminLogModule } from './modules/admin-log/admin-log.module'
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { UserModule } from './modules/user/user.module'
     ContestModule,
     ChatModule,
     AnnouncementModule,
+    AdminLogModule,
   ],
   controllers: [AppController],
   providers: [AppService],

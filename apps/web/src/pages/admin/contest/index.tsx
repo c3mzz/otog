@@ -109,6 +109,13 @@ export default function AdminContestPage() {
           >
             <NextLink href="/admin/user">ผู้ใช้งาน</NextLink>
           </TabsTrigger>
+          <TabsTrigger
+            value="log"
+            className="overflow-hidden rounded-b-none border-x border-t border-border bg-muted py-2 data-[state=active]:z-10 data-[state=active]:shadow-none"
+            asChild
+          >
+            <NextLink href="/admin/log">บันทึกการทำงาน</NextLink>
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="contest" className="mt-4">
           <ContestDataTable />

@@ -16,6 +16,8 @@ import { announcementRouter } from '@otog/contract'
 import { UserDTO } from '../user/dto/user.dto'
 import { AnnouncementService } from './announcement.service'
 
+import { Public } from '../../core/decorators/isPublic.decorator'
+
 const c = nestControllerContract(announcementRouter)
 
 @Controller()
@@ -24,8 +26,9 @@ export class AnnouncementController {
   constructor(private announcementService: AnnouncementService) {}
 
   @TsRestHandler(c.getAnnouncements, { jsonQuery: true })
-  @OfflineAccess(AccessState.Authenticated)
-  getAnnouncements(@User() user: UserDTO) {
+  @Public()
+  @OfflineAccess(AccessState.Public)
+  getAnnouncements(@User() user: UserDTO | undefined) {
     return tsRestHandler(c.getAnnouncements, async ({ query }) => {
       if (!query.show && user?.role !== Role.Admin) {
         return {
@@ -58,15 +61,16 @@ export class AnnouncementController {
 
   @TsRestHandler(c.createAnnouncement, { jsonQuery: true })
   @Roles(Role.Admin)
-  createAnnouncement() {
+  createAnnouncement(@User() user: UserDTO) {
     return tsRestHandler(c.createAnnouncement, async ({ body, query }) => {
       if (!body.value) {
         return { status: 400, body: { message: 'No value is sent' } }
       }
-      const contestId = z.coerce.number().parse(query.contestId)
+      const contestId = query.contestId ? z.coerce.number().parse(query.contestId) : null
       const announcement = await this.announcementService.create(
         body.value,
-        contestId
+        contestId,
+        user.id
       )
       return {
         status: 201,
@@ -77,12 +81,12 @@ export class AnnouncementController {
 
   @TsRestHandler(c.deleteAnnouncement, { jsonQuery: true })
   @Roles(Role.Admin)
-  deleteAnnouncement() {
+  deleteAnnouncement(@User() user: UserDTO) {
     return tsRestHandler(
       c.deleteAnnouncement,
       async ({ params: { announcementId } }) => {
         const id = z.coerce.number().parse(announcementId)
-        const announcement = await this.announcementService.delete(id)
+        const announcement = await this.announcementService.delete(id, user.id)
         return {
           status: 200,
           body: { ...announcement, value: JSON.stringify(announcement.value) },
@@ -93,13 +97,13 @@ export class AnnouncementController {
 
   @TsRestHandler(c.showAnnouncement, { jsonQuery: true })
   @Roles(Role.Admin)
-  showAnnouncement() {
+  showAnnouncement(@User() user: UserDTO) {
     return tsRestHandler(
       c.showAnnouncement,
       async ({ params: { announcementId }, body: { show } }) => {
         const id = z.coerce.number().parse(announcementId)
         const announcement =
-          await this.announcementService.updateAnnouncementShow(id, show)
+          await this.announcementService.updateAnnouncementShow(id, show, user.id)
         return {
           status: 200,
           body: { ...announcement, value: JSON.stringify(announcement.value) },
@@ -110,14 +114,15 @@ export class AnnouncementController {
 
   @TsRestHandler(c.updateAnnouncement, { jsonQuery: true })
   @Roles(Role.Admin)
-  updateAnnouncement() {
+  updateAnnouncement(@User() user: UserDTO) {
     return tsRestHandler(
       c.updateAnnouncement,
       async ({ params: { announcementId }, body }) => {
         const id = z.coerce.number().parse(announcementId)
         const announcement = await this.announcementService.updateAnnounce(
           id,
-          body
+          body,
+          user.id
         )
         return {
           status: 200,

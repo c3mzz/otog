@@ -24,7 +24,7 @@ import {
   getCoreRowModel,
 } from '@tanstack/table-core'
 import { File } from '@web-std/file'
-import { PencilIcon, Plus } from 'lucide-react'
+import { PencilIcon, Plus, Trash } from 'lucide-react'
 import NextLink from 'next/link'
 import { z } from 'zod'
 
@@ -114,12 +114,61 @@ export default function AdminProblemPage() {
           >
             <NextLink href="/admin/user">ผู้ใช้งาน</NextLink>
           </TabsTrigger>
+          <TabsTrigger
+            value="log"
+            className="overflow-hidden rounded-b-none border-x border-t border-border bg-muted py-2 data-[state=active]:z-10 data-[state=active]:shadow-none"
+            asChild
+          >
+            <NextLink href="/admin/log">บันทึกการทำงาน</NextLink>
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="problem" className="mt-4 flex flex-col gap-4">
           <ProblemDataTable />
         </TabsContent>
       </Tabs>
     </main>
+  )
+}
+
+const getRemainingDays = (deletedAtInput: any) => {
+  const deletedAt = new Date(deletedAtInput)
+  const now = new Date()
+  const diffTime = now.getTime() - deletedAt.getTime()
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  const remaining = 30 - diffDays
+  return remaining > 0 ? remaining : 0
+}
+
+const RestoreProblemButton = ({ row }: { row: Row<AdminProblemSchema> }) => {
+  const restoreProblem = problemQuery.restoreProblem.useMutation()
+  const queryClient = useQueryClient()
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() => {
+        const toastId = toast.loading('กำลังกู้คืนโจทย์...')
+        restoreProblem.mutateAsync(
+          {
+            params: { problemId: row.original.id.toString() },
+          },
+          {
+            onSuccess: () => {
+              toast.success('กู้คืนโจทย์สำเร็จ', { id: toastId })
+              queryClient.invalidateQueries({
+                queryKey: problemKey.getProblemsForAdmin._def,
+              })
+            },
+            onError: () => {
+              toast.error('ไม่สามารถกู้คืนโจทย์ได้', { id: toastId })
+            },
+          }
+        )
+      }}
+    >
+      กู้คืน
+    </Button>
   )
 }
 
@@ -134,6 +183,7 @@ function ProblemDataTable() {
     passedCount: false,
   })
   const [search, setSearch] = useState('')
+  const [showDeleted, setShowDeleted] = useState(false)
 
   const getProblemsForAdmin = useQuery({
     ...problemKey.getProblemsForAdmin({
@@ -141,6 +191,7 @@ function ProblemDataTable() {
         limit: pagination.pageSize,
         skip: pagination.pageIndex * pagination.pageSize,
         search: search.trim(),
+        deleted: showDeleted,
       },
     }),
     placeholderData: keepPreviousData,
@@ -156,6 +207,114 @@ function ProblemDataTable() {
     () => getProblemsForAdmin.data?.body.total ?? 0,
     [getProblemsForAdmin.data]
   )
+
+  const columns = useMemo(() => {
+    const base = [
+      columnHelper.accessor('id', {
+        header: '#',
+        enableSorting: false,
+      }),
+      columnHelper.accessor('name', {
+        header: 'ชื่อ',
+        cell: ({ getValue, row }) => (
+          <Link
+            isExternal
+            href={`/api/problem/${row.original.id}`}
+            className="text-sm"
+          >
+            {getValue()}
+          </Link>
+        ),
+        enableSorting: false,
+      }),
+      columnHelper.accessor('sname', {
+        header: 'ชื่อเล่น',
+        cell: ({ getValue }) => getValue() ?? '-',
+        enableSorting: false,
+      }),
+    ]
+
+    if (showDeleted) {
+      return [
+        ...base,
+        columnHelper.accessor('deletedAt', {
+          header: 'วันเวลาที่ลบ',
+          cell: ({ getValue }) => {
+            const val = getValue()
+            return val ? new Date(val as any).toLocaleString('th-TH') : '-'
+          },
+          enableSorting: false,
+        }),
+        columnHelper.display({
+          id: 'remainingDays',
+          header: 'เหลือเวลา',
+          cell: ({ row }) => {
+            if (!row.original.deletedAt) return '-'
+            const days = getRemainingDays(row.original.deletedAt)
+            return <span className="text-red-500 font-semibold">{days} วัน</span>
+          },
+          enableSorting: false,
+        }),
+        columnHelper.display({
+          id: 'restore',
+          header: () => <span className="sr-only">กู้คืน</span>,
+          cell: ({ row }) => <RestoreProblemButton row={row} />,
+          meta: { headClassName: 'text-end', cellClassName: 'text-end' },
+        })
+      ]
+    }
+
+    return [
+      ...base,
+      columnHelper.accessor('score', {
+        header: 'คะแนน',
+        enableSorting: false,
+        meta: {
+          headClassName: 'text-end',
+          cellClassName: 'text-end',
+        },
+      }),
+      columnHelper.accessor('timeLimit', {
+        header: 'เวลา',
+        cell: ({ getValue }) => getValue() / 1000,
+        enableSorting: false,
+        meta: {
+          headClassName: 'text-end',
+          cellClassName: 'text-end',
+        },
+      }),
+      columnHelper.accessor('memoryLimit', {
+        header: 'หน่วยความจำ',
+        enableSorting: false,
+        meta: {
+          headClassName: 'text-end',
+          cellClassName: 'text-end',
+        },
+      }),
+      columnHelper.accessor('case', {
+        header: 'จำนวนเคส',
+        enableSorting: false,
+        meta: {
+          headClassName: 'text-end',
+          cellClassName: 'text-end',
+        },
+      }),
+      columnHelper.display({
+        id: 'actions',
+        header: () => <span className="sr-only">เพิ่มเติม</span>,
+        cell: ({ row }) => {
+          return (
+            <div className="inline-flex">
+              <ToggleShowProblem row={row} />
+              <ActionMenu row={row} />
+            </div>
+          )
+        },
+        meta: { headClassName: 'text-end', cellClassName: 'text-end' },
+      }),
+    ]
+  }, [showDeleted])
+
   const table = useReactTable({
     columns,
     data: problems,
@@ -180,14 +339,38 @@ function ProblemDataTable() {
     <div className="flex flex-col gap-4">
       <h2 className="sr-only">ตารางโจทย์</h2>
       <div className="flex gap-2 flex-col sm:flex-row justify-between">
-        <TableSearch table={table} />
+        <div className="flex gap-2 items-center flex-wrap">
+          <TableSearch table={table} />
+          <div className="flex h-10 gap-1 border rounded-md p-0.5 bg-muted">
+            <Button
+              variant={showDeleted ? 'ghost' : 'secondary'}
+              size="sm"
+              onClick={() => {
+                setShowDeleted(false)
+                setPagination({ pageIndex: 0, pageSize: 10 })
+              }}
+            >
+              โจทย์ทั้งหมด
+            </Button>
+            <Button
+              variant={showDeleted ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => {
+                setShowDeleted(true)
+                setPagination({ pageIndex: 0, pageSize: 10 })
+              }}
+            >
+              ถังขยะ (30 วัน)
+            </Button>
+          </div>
+        </div>
         <div className="flex gap-2 justify-end max-sm:flex-col">
           <TablePaginationInfo
             className="self-end"
             table={table}
             isLoading={getProblemsForAdmin.isFetching}
           />
-          <AddProblem />
+          {!showDeleted && <AddProblem />}
         </div>
       </div>
       <TableComponent
@@ -204,83 +387,15 @@ function ProblemDataTable() {
 }
 
 const columnHelper = createColumnHelper<AdminProblemSchema>()
-const columns = [
-  columnHelper.accessor('id', {
-    header: '#',
-    enableSorting: false, // TODO: sort by id
-  }),
-  columnHelper.accessor('name', {
-    header: 'ขื่อ',
-    cell: ({ getValue, row }) => (
-      <Link
-        isExternal
-        href={`/api/problem/${row.original.id}`}
-        className="text-sm"
-      >
-        {getValue()}
-      </Link>
-    ),
-    enableSorting: false,
-  }),
-  columnHelper.accessor('sname', {
-    header: 'ขื่อเล่น',
-    cell: ({ getValue }) => getValue() ?? '-',
-    enableSorting: false,
-  }),
-  columnHelper.accessor('score', {
-    header: 'คะแนน',
-    enableSorting: false,
-    meta: {
-      headClassName: 'text-end',
-      cellClassName: 'text-end',
-    },
-  }),
-  columnHelper.accessor('timeLimit', {
-    header: 'เวลา',
-    cell: ({ getValue }) => getValue() / 1000,
-    enableSorting: false,
-    meta: {
-      headClassName: 'text-end',
-      cellClassName: 'text-end',
-    },
-  }),
-
-  columnHelper.accessor('memoryLimit', {
-    header: 'หน่วยความจำ',
-    enableSorting: false,
-    meta: {
-      headClassName: 'text-end',
-      cellClassName: 'text-end',
-    },
-  }),
-  columnHelper.accessor('case', {
-    header: 'จำนวนเคส',
-    enableSorting: false,
-    meta: {
-      headClassName: 'text-end',
-      cellClassName: 'text-end',
-    },
-  }),
-  columnHelper.display({
-    id: 'actions',
-    header: () => <span className="sr-only">เพิ่มเติม</span>,
-    cell: ({ row }) => {
-      return (
-        <div className="inline-flex">
-          <ToggleShowProblem row={row} />
-          <ActionMenu row={row} />
-        </div>
-      )
-    },
-    meta: { headClassName: 'text-end', cellClassName: 'text-end' },
-  }),
-]
 
 const ActionMenu = ({ row }: { row: Row<AdminProblemSchema> }) => {
   const [openEditProblem, setOpenEditProblem] = useState(false)
   const [openRejudgeProblem, setOpenRejudgeProblem] = useState(false)
+  const [openDeleteProblem, setOpenDeleteProblem] = useState(false)
   const rejudgeProblem = submissionQuery.rejudgeProblem.useMutation()
   const downloadAttachment = problemQuery.downloadAttachment.useMutation()
+  const deleteProblem = problemQuery.deleteProblem.useMutation()
+  const queryClient = useQueryClient()
   const download = async () => {
     const toastId = toast.loading('กำลังดาวน์โหลดไฟล์แนบ...')
     const response = await downloadAttachment.mutateAsync({
@@ -323,6 +438,10 @@ const ActionMenu = ({ row }: { row: Row<AdminProblemSchema> }) => {
             <DownloadSimpleIcon className="size-4" />
             โหลดไฟล์แนบ
           </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setOpenDeleteProblem(true)} className="text-red-600 focus:text-red-600">
+            <Trash className="size-4" />
+            ลบโจทย์
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <EditProblemDialog
@@ -353,6 +472,42 @@ const ActionMenu = ({ row }: { row: Row<AdminProblemSchema> }) => {
                     },
                     onError: () => {
                       toast.error('ไม่สามารถส่งตรวจได้', { id: toastId })
+                    },
+                  }
+                )
+              }}
+            >
+              ยืนยัน
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={openDeleteProblem}
+        onOpenChange={setOpenDeleteProblem}
+      >
+        <AlertDialogContent>
+          <AlertDialogTitle>ยืนยันการลบโจทย์</AlertDialogTitle>
+          <AlertDialogDescription>
+            โจทย์จะถูกย้ายไปที่ถังขยะและสามารถกู้คืนได้ภายใน 30 วัน
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const toastId = toast.loading('กำลังลบโจทย์...')
+                deleteProblem.mutateAsync(
+                  { params: { problemId: row.original.id.toString() } },
+                  {
+                    onSuccess: () => {
+                      toast.success('ลบโจทย์สำเร็จ', { id: toastId })
+                      setOpenDeleteProblem(false)
+                      queryClient.invalidateQueries({
+                        queryKey: problemKey.getProblemsForAdmin._def,
+                      })
+                    },
+                    onError: () => {
+                      toast.error('ไม่สามารถลบโจทย์ได้', { id: toastId })
                     },
                   }
                 )

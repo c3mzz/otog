@@ -108,16 +108,26 @@ export class UserService {
     })
   }
 
-  async updateShowNameById(showName: string, id: number) {
+  async updateShowNameById(showName: string, id: number, adminUserId?: number) {
     const showNameExists = await this.findOneByShowName(showName)
     if (showNameExists) {
       throw new ConflictException('showName was taken.')
     }
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id },
       data: { showName },
-      select: { showName: true },
+      select: { id: true, username: true, showName: true },
     })
+    if (adminUserId) {
+      await this.prisma.adminLog.create({
+        data: {
+          userId: adminUserId,
+          action: 'UPDATE_USER_NAME',
+          description: `Updated user show name for: ${updated.username} (ID: ${updated.id}) to "${updated.showName}"`,
+        },
+      })
+    }
+    return { showName: updated.showName }
   }
 
   async getUserProfileById(id: number) {
@@ -153,21 +163,42 @@ export class UserService {
     })
   }
 
-  async updateUser(userId: number, userData: Prisma.UserUpdateInput) {
+  async updateUser(userId: number, userData: Prisma.UserUpdateInput, adminUserId?: number) {
+    const previousUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    })
+
+    let updatedUser;
     if (typeof userData.password === 'string' && !!userData.password) {
       const hash = sha256.create()
       hash.update(userData.password)
-      return this.prisma.user.update({
+      updatedUser = await this.prisma.user.update({
         where: { id: userId },
         data: { password: hash.hex() },
+        select: WITHOUT_PASSWORD,
+      })
+    } else {
+      // eslint-disable-next-line no-unused-vars
+      const { password: _password, ...data } = userData
+      updatedUser = await this.prisma.user.update({
+        where: { id: userId },
+        data: data,
+        select: WITHOUT_PASSWORD,
       })
     }
-    // eslint-disable-next-line no-unused-vars
-    const { password: _password, ...data } = userData
-    return this.prisma.user.update({
-      where: { id: userId },
-      data: data,
-      select: WITHOUT_PASSWORD,
-    })
+    if (adminUserId) {
+      const isRoleGrantedAdmin = previousUser?.role !== 'admin' && updatedUser.role === 'admin'
+      await this.prisma.adminLog.create({
+        data: {
+          userId: adminUserId,
+          action: isRoleGrantedAdmin ? 'GIVE_ADMIN' : 'UPDATE_USER',
+          description: isRoleGrantedAdmin
+            ? `Granted admin permission to: ${updatedUser.username} (ID: ${updatedUser.id})`
+            : `Updated user info for: ${updatedUser.username} (ID: ${updatedUser.id})`,
+        },
+      })
+    }
+    return updatedUser
   }
 }

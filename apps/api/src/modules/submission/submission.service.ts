@@ -210,6 +210,7 @@ export class SubmissionService {
       select: { id: true },
       where: {
         id: args.problemId,
+        deletedAt: null,
         OR: [
           ...(args.contestId
             ? [{ contestProblem: { some: { contestId: args.contestId } } }]
@@ -347,5 +348,24 @@ export class SubmissionService {
         data: { status: SubmissionStatus.waiting },
       }),
     ])
+  }
+
+  async logAdminShare(submissionId: number, show: boolean, adminUserId: number) {
+    const submission = await this.prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: {
+        user: { select: { username: true } },
+        problem: { select: { name: true } },
+      },
+    })
+    if (submission) {
+      await this.prisma.adminLog.create({
+        data: {
+          userId: adminUserId,
+          action: 'SHARE_SUBMISSION',
+          description: `Set submission visibility of user: ${submission.user.username} (ID: ${submission.userId}) for problem: ${submission.problem.name} to ${show ? 'public' : 'private'} (Submission ID: ${submissionId})`,
+        },
+      })
+    }
   }
 }

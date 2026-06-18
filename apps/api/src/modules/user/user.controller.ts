@@ -56,10 +56,10 @@ export class UserController {
 
   @TsRestHandler(c.updateUser)
   @Roles(Role.Admin)
-  updateUser() {
+  updateUser(@User() adminUser: UserDTO) {
     return tsRestHandler(c.updateUser, async ({ params: { userId }, body }) => {
       const id = z.coerce.number().parse(userId)
-      const user = await this.userService.updateUser(id, body)
+      const user = await this.userService.updateUser(id, body, adminUser.id)
       return { status: 200, body: user }
     })
   }
@@ -76,7 +76,8 @@ export class UserController {
         }
         const showName = await this.userService.updateShowNameById(
           body.showName,
-          id
+          id,
+          user.role === Role.Admin ? user.id : undefined
         )
         return { status: 200, body: showName }
       }

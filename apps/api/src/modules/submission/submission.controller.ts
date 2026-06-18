@@ -295,9 +295,13 @@ export class SubmissionController {
         if (!(user.id === submission.user.id || user.role === Role.Admin)) {
           return { status: 403, body: { message: 'Forbidden' } }
         }
+        const result = await this.submissionService.updateSubmissionPublic(id, show)
+        if (user.role === Role.Admin && user.id !== submission.user.id) {
+          await this.submissionService.logAdminShare(id, show, user.id)
+        }
         return {
           status: 200,
-          body: await this.submissionService.updateSubmissionPublic(id, show),
+          body: result,
         }
       }
     )

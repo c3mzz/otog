@@ -80,6 +80,7 @@ model Problem {
   submission         Submission[]
   contestScore       ContestScore[]
   attachmentMetadata Json?
+  deletedAt          DateTime?        @db.Timestamptz(6)
 
   @@map("problem")
 }
@@ -171,6 +172,7 @@ model User {
   submission   Submission[]
   userContest  UserContest[]
   contestScore ContestScore[]
+  adminLog     AdminLog[]
 
   @@map("user")
 }
@@ -267,4 +269,15 @@ enum VerdictStatus {
   INTERNAL_ERROR
 
   @@map("enum_verdict_status")
+}
+
+model AdminLog {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  action       String   @db.VarChar(255)
+  description  String?  @db.VarChar(255)
+  creationDate DateTime @default(now()) @db.Timestamptz(6)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("adminLog")
 }

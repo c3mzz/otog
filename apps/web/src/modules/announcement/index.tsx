@@ -31,18 +31,35 @@ export const AnnouncementCarousel = ({
   const count = announcements.length
 
   const [currentIndex, setIndex] = useState(0)
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
   const onNext = useCallback(() => {
-    const nextIndex = (currentIndex + 1) % count
+    const nextIndex = count > 0 ? (currentIndex + 1) % count : 0
     setIndex(nextIndex)
   }, [count, currentIndex])
 
   useEffect(() => {
-    if (isAuthenticated && count > 0) {
+    if (isAuthenticated && count > 0 && !isModalOpen) {
       const interval = setInterval(onNext, INTERVAL)
       return () => clearInterval(interval)
     }
-  }, [isAuthenticated, currentIndex, announcements, onNext])
+  }, [isAuthenticated, currentIndex, announcements, onNext, isModalOpen])
+
+  if (count === 0) {
+    if (isAdmin) {
+      return (
+        <AnnouncementContext.Provider
+          value={{ contestId, currentIndex, onNext, count }}
+        >
+          <div className="relative flex items-center justify-center border border-dashed rounded-lg p-6 h-[180px] w-full text-muted-foreground select-none">
+            <span>ยังไม่มีประกาศ (คลิกปุ่มขวาบนเพื่อเพิ่มประกาศ)</span>
+            <AnnouncementModal open={isModalOpen} onOpenChange={setIsModalOpen} />
+          </div>
+        </AnnouncementContext.Provider>
+      )
+    }
+    return null
+  }
 
   return (
     <AnnouncementContext.Provider
@@ -62,7 +79,9 @@ export const AnnouncementCarousel = ({
             index={index}
           />
         ))}
-        {isAdmin && <AnnouncementModal />}
+        {isAdmin && (
+          <AnnouncementModal open={isModalOpen} onOpenChange={setIsModalOpen} />
+        )}
       </section>
     </AnnouncementContext.Provider>
   )

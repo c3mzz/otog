@@ -200,9 +200,9 @@ export class ContestController {
 
   @TsRestHandler(c.createContest)
   @Roles(Role.Admin)
-  createContest() {
+  createContest(@User() adminUser: UserDTO) {
     return tsRestHandler(c.createContest, async ({ body }) => {
-      const contest = await this.contestService.create(body)
+      const contest = await this.contestService.create(body, adminUser.id)
       return { status: 200, body: contest }
     })
   }
@@ -243,12 +243,12 @@ export class ContestController {
 
   @TsRestHandler(c.updateContest)
   @Roles(Role.Admin)
-  updateContest() {
+  updateContest(@User() adminUser: UserDTO) {
     return tsRestHandler(
       c.updateContest,
       async ({ body, params: { contestId } }) => {
         const id = z.coerce.number().parse(contestId)
-        const contest = await this.contestService.updateContest(id, body)
+        const contest = await this.contestService.updateContest(id, body, adminUser.id)
         return { status: 200, body: contest }
       }
     )
@@ -256,12 +256,12 @@ export class ContestController {
 
   @TsRestHandler(c.patchContest)
   @Roles(Role.Admin)
-  patchContest() {
+  patchContest(@User() adminUser: UserDTO) {
     return tsRestHandler(
       c.patchContest,
       async ({ body, params: { contestId } }) => {
         const id = z.coerce.number().parse(contestId)
-        const contest = await this.contestService.patchContest(id, body)
+        const contest = await this.contestService.patchContest(id, body, adminUser.id)
         return { status: 200, body: contest }
       }
     )
@@ -269,10 +269,10 @@ export class ContestController {
 
   @TsRestHandler(c.deleteContest)
   @Roles(Role.Admin)
-  deleteContest() {
+  deleteContest(@User() adminUser: UserDTO) {
     return tsRestHandler(c.deleteContest, async ({ params: { contestId } }) => {
       const id = z.coerce.number().parse(contestId)
-      const contest = await this.contestService.deleteContest(id)
+      const contest = await this.contestService.deleteContest(id, adminUser.id)
       return { status: 200, body: contest }
     })
   }

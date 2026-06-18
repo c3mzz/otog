@@ -4,6 +4,7 @@ import { z } from 'zod'
 
 import {
   AnnouncementModel,
+  AdminLogModel,
   ChatModel,
   ContestModel,
   ContestProblemModel,
@@ -725,6 +726,7 @@ export const ProblemSchema = ProblemModel.pick({
   show: true,
   recentShowTime: true,
   case: true,
+  deletedAt: true,
 })
 export type ProblemSchema = z.infer<typeof ProblemSchema>
 export const ProblemDetailSchema = ProblemSchema.extend({
@@ -819,7 +821,9 @@ export const problemRouter = contract.router(
           data: z.array(AdminProblemSchema),
         }),
       },
-      query: ListPaginationQuerySchema,
+      query: ListPaginationQuerySchema.extend({
+        deleted: z.coerce.boolean().optional(),
+      }),
       summary: 'Get paginated problems for admin',
     },
     getPassedUsers: {
@@ -891,6 +895,17 @@ export const problemRouter = contract.router(
       },
       body: null,
       summary: 'Delete a problem',
+    },
+    restoreProblem: {
+      method: 'POST',
+      path: '/:problemId/restore',
+      responses: {
+        200: ProblemSchema,
+        400: z.object({ message: z.string() }),
+        404: z.object({ message: z.string() }),
+      },
+      body: null,
+      summary: 'Restore a deleted problem',
     },
     updateProblemExamples: {
       method: 'PUT',
@@ -1013,6 +1028,31 @@ export const appRouter = contract.router({
   },
 })
 
+export const AdminLogSchema = AdminLogModel.extend({
+  user: UserSchema,
+})
+export type AdminLogSchema = z.infer<typeof AdminLogSchema>
+
+export const adminLogRouter = contract.router(
+  {
+    getAdminLogs: {
+      method: 'GET',
+      path: '',
+      query: ListPaginationQuerySchema.extend({
+        action: z.string().optional(),
+      }),
+      responses: {
+        200: z.object({
+          total: z.number(),
+          data: z.array(AdminLogSchema),
+        }),
+      },
+      summary: 'Get paginated admin logs',
+    },
+  },
+  { pathPrefix: '/admin-log' }
+)
+
 export const router = contract.router({
   app: appRouter,
   auth: authRouter,
@@ -1022,4 +1062,5 @@ export const router = contract.router({
   contest: contestRouter,
   submission: submissionRouter,
   announcement: announcementRouter,
+  adminLog: adminLogRouter,
 })

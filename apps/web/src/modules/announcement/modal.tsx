@@ -16,9 +16,13 @@ import { announcementKey, announcementQuery } from '../../api/query'
 import { AnnouncementEditable } from './editor'
 import { createEmptyAnnouncement } from './utils'
 
-export const AnnouncementModal = () => {
-  const [open, setOpen] = useState(false)
-
+export const AnnouncementModal = ({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) => {
   const { contestId } = useAnnouncementContext()
   const getAnnouncements = useQuery(
     announcementKey.getAnnouncements({
@@ -44,7 +48,7 @@ export const AnnouncementModal = () => {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
         <Button
           className="absolute right-0 top-0 z-10"

@@ -145,7 +145,7 @@ export const AnnouncementEditor = ({
   // TODO: fix https://github.com/ianstormtaylor/slate/issues/3309
   return (
     <div className="flex flex-col gap-2 border-b py-4 last:border-b-0">
-      <Slate editor={editor} initialValue={value} onChange={setValue}>
+      <Slate editor={editor} initialValue={defaultValue} onChange={setValue}>
         <div className="flex flex-wrap justify-between gap-2">
           <div className="flex gap-2">
             <ButtonGroup>
